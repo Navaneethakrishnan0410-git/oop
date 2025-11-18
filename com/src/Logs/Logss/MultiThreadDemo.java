@@ -4,7 +4,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
+import java.util.stream.Stream;
 
 public class MultiThreadDemo {
 
@@ -18,13 +18,23 @@ public class MultiThreadDemo {
 
     public static void main(String[] args) throws Exception {
 
+        String folderPath;
+
+        // ---------------- OPTION: Scanner input if no arguments ----------------
         if (args.length == 0) {
-            System.out.println("Usage: java Main <folderPath>");
-            return;
+            Scanner sc = new Scanner(System.in);
+            System.out.print("Enter log folder path: ");
+            folderPath = sc.nextLine().trim();
+        } else {
+            folderPath = args[0];
         }
 
-        String folderPath = args[0];
         File folder = new File(folderPath);
+
+        if (!folder.exists() || !folder.isDirectory()) {
+            System.out.println("Invalid folder path: " + folderPath);
+            return;
+        }
 
         File[] logFiles = folder.listFiles((dir, name) -> name.endsWith(".txt"));
         if (logFiles == null || logFiles.length == 0) {
@@ -52,9 +62,11 @@ public class MultiThreadDemo {
         }
 
         executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
+
         long endConcurrent = System.currentTimeMillis();
 
-        // --------------------- SEQUENTIAL EXECUTION -----------------
+        // ------------------- SEQUENTIAL EXECUTION -------------------
         long startSequential = System.currentTimeMillis();
 
         Map<String, Integer> sequentialMap = new HashMap<>();
@@ -74,13 +86,10 @@ public class MultiThreadDemo {
 
         writeOutputToFile(totalCounts);
 
-        System.out.println("\nConcurrent Time: " +
-                (endConcurrent - startConcurrent) + " ms");
+        System.out.println("\nConcurrent Time: " + (endConcurrent - startConcurrent) + " ms");
+        System.out.println("Sequential Time: " + (endSequential - startSequential) + " ms");
 
-        System.out.println("Sequential Time: " +
-                (endSequential - startSequential) + " ms");
-
-        System.out.println("\nView Task Manager to observe thread usage.");
+        System.out.println("\nCheck Task Manager to observe thread usage.");
     }
 
     // Combine results from worker into global map
@@ -93,13 +102,19 @@ public class MultiThreadDemo {
     // Sequential version for comparison
     private static Map<String, Integer> processSequential(File file) throws IOException {
         Map<String, Integer> map = new HashMap<>();
-        List<String> lines = Files.readAllLines(file.toPath());
+        for (String kw : KEYWORDS) {
+            map.put(kw, 0);
+        }
 
-        for (String keyword : KEYWORDS) {
-            long count = lines.stream()
-                    .filter(line -> line.toLowerCase().contains(keyword))
-                    .count();
-            map.put(keyword, (int) count);
+        try (Stream<String> lines = Files.lines(file.toPath())) {
+            lines.map(String::toLowerCase)
+                    .forEach(line -> {
+                        for (String keyword : KEYWORDS) {
+                            if (line.contains(keyword)) {
+                                map.put(keyword, map.get(keyword) + 1);
+                            }
+                        }
+                    });
         }
 
         return map;
@@ -109,8 +124,8 @@ public class MultiThreadDemo {
     private static void writeOutputToFile(Map<String, Integer> result) {
         try (FileWriter writer = new FileWriter("log_result.txt")) {
             writer.write("=== Log Keyword Summary ===\n");
-            for (String k : result.keySet()) {
-                writer.write(k + " = " + result.get(k) + "\n");
+            for (String k : KEYWORDS) {
+                writer.write(k + " = " + result.getOrDefault(k, 0) + "\n");
             }
             System.out.println("\nResults saved to log_result.txt");
         } catch (Exception e) {
@@ -134,14 +149,19 @@ public class MultiThreadDemo {
         @Override
         public Map<String, Integer> call() throws Exception {
             Map<String, Integer> result = new HashMap<>();
+            for (String kw : keywords) {
+                result.put(kw, 0);
+            }
 
-            List<String> lines = Files.readAllLines(file.toPath());
-
-            for (String keyword : keywords) {
-                long count = lines.stream()
-                        .filter(line -> line.toLowerCase().contains(keyword))
-                        .count();
-                result.put(keyword, (int) count);
+            try (Stream<String> lines = Files.lines(file.toPath())) {
+                lines.map(String::toLowerCase)
+                        .forEach(line -> {
+                            for (String keyword : keywords) {
+                                if (line.contains(keyword)) {
+                                    result.put(keyword, result.get(keyword) + 1);
+                                }
+                            }
+                        });
             }
 
             System.out.println(Thread.currentThread().getName()
@@ -151,4 +171,3 @@ public class MultiThreadDemo {
         }
     }
 }
-
